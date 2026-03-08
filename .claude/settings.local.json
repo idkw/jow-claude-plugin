@@ -1,0 +1,11 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(go build:*)",
+      "Bash(go run:*)",
+      "Bash(go get:*)",
+      "Bash(go:*)",
+      "mcp__jow-recipes__search_ingredients"
+    ]
+  }
+}

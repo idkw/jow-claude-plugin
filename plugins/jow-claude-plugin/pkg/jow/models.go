@@ -64,6 +64,7 @@ type Recipe struct {
 	Constituents           []Constituent     `json:"constituents"`
 	CookingTime            int               `json:"cookingTime"`
 	CreatedAt              *time.Time        `json:"createdAt"`
+	Description            string            `json:"description"`
 	Directions             []Direction       `json:"directions"`
 	ImageURL               string            `json:"imageUrl,omitempty"`
 	PlaceHolderURL         string            `json:"placeHolderUrl"`

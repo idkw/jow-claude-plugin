@@ -1,10 +1,16 @@
 package jow
 
 import (
+	"bytes"
 	"cmp"
 	"encoding/json"
 	"fmt"
+	"io"
+	"mime/multipart"
+	"net/http"
 	"net/url"
+	"os"
+	"path/filepath"
 	"slices"
 )
 
@@ -113,6 +119,60 @@ func (c *Client) CreateRecipe(req Recipe) error {
 		return fmt.Errorf("create recipe: %w", err)
 	}
 	return nil
+}
+
+// UploadRecipeImage uploads an image file to Jow and returns the imageUrl (e.g. "uploadedrecipes/xyz.jpg").
+func (c *Client) UploadRecipeImage(imagePath string) (string, error) {
+	f, err := os.Open(imagePath)
+	if err != nil {
+		return "", fmt.Errorf("open image: %w", err)
+	}
+	defer f.Close()
+
+	var buf bytes.Buffer
+	w := multipart.NewWriter(&buf)
+	fw, err := w.CreateFormFile("image", filepath.Base(imagePath))
+	if err != nil {
+		return "", fmt.Errorf("create form file: %w", err)
+	}
+	if _, err := io.Copy(fw, f); err != nil {
+		return "", fmt.Errorf("copy image data: %w", err)
+	}
+	w.Close()
+
+	req, err := http.NewRequest("POST", baseURL+"/recipes/uploaded/image", &buf)
+	if err != nil {
+		return "", fmt.Errorf("build request: %w", err)
+	}
+	req.Header.Set("Accept", "application/json")
+	req.Header.Set("Accept-Language", "fr")
+	req.Header.Set("Content-Type", w.FormDataContentType())
+	req.Header.Set("Authorization", "Bearer "+c.token)
+	req.Header.Set("Origin", "https://jow.fr")
+	req.Header.Set("Referer", "https://jow.fr/")
+	req.Header.Set("x-jow-withmeta", "1")
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return "", fmt.Errorf("send request: %w", err)
+	}
+	defer resp.Body.Close()
+
+	respBody, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return "", fmt.Errorf("read response: %w", err)
+	}
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return "", fmt.Errorf("HTTP %d: %s", resp.StatusCode, string(respBody))
+	}
+
+	var result apiResponse[struct {
+		ImageURL string `json:"imageUrl"`
+	}]
+	if err := json.Unmarshal(respBody, &result); err != nil {
+		return "", fmt.Errorf("parse upload response: %w", err)
+	}
+	return result.Data.ImageURL, nil
 }
 
 // UpdateRecipe updates an existing uploaded recipe.

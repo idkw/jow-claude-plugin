@@ -8,7 +8,7 @@ import (
 	"os"
 	"strings"
 
-	"pkg/jow"
+	"github.com/idkw/jow-claude-plugin/pkg/jow"
 
 	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/mark3labs/mcp-go/server"
@@ -144,6 +144,30 @@ func registerTools(s *server.MCPServer, client *jow.Client) {
 		},
 	)
 
+	// ── upload_recipe_image ─────────────────────────────────────────────────
+	s.AddTool(
+		mcp.NewTool("upload_recipe_image",
+			mcp.WithDescription(
+				"Upload a local image file as the picture for a Jow recipe. "+
+					"Returns the imageUrl to pass to set_recipe_image or update_recipe.",
+			),
+			mcp.WithString("file_path",
+				mcp.Required(),
+				mcp.Description("Absolute path to the image file on disk (JPEG, PNG, …)"),
+			),
+			mcp.WithDestructiveHintAnnotation(false),
+			mcp.WithOpenWorldHintAnnotation(false),
+		),
+		func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+			filePath, _ := req.GetArguments()["file_path"].(string)
+			imageURL, err := client.UploadRecipeImage(filePath)
+			if err != nil {
+				return mcp.NewToolResultError(fmt.Sprintf("upload image: %v", err)), nil
+			}
+			return mcp.NewToolResultText(imageURL), nil
+		},
+	)
+
 	// ── create_recipe ───────────────────────────────────────────────────────
 	s.AddTool(
 		mcp.NewTool("create_recipe",
@@ -152,48 +176,45 @@ func registerTools(s *server.MCPServer, client *jow.Client) {
 Workflow:
 1. Call search_ingredients for each ingredient to obtain its id and unit id.
 2. Call get_recipe_tools for each tool to obtain its id
-3. Call create_recipe with all the recipe data.
+3. Upload the recipe image if provided by the user
+4. Call create_recipe with all the recipe data.
 
 constituents : all ingredients (meat, vegetables, pasta, salt, butter, ...)
 
-Each constituent is a JSON object:
-  {"ingredient_id": "<id from search>", "quantity_per_cover": <number>, "unit_id": "<unit id>"}
-  quantity_per_cover = total quantity for the recipe ÷ number of servings (in the chosen unit)
+  Each constituent is a JSON object:
+    {"ingredient_id": "<id from search_ingredients>", "quantity_per_cover": <number>, "unit_id": "<unit id>"}
+    quantity_per_cover = total quantity for the recipe ÷ number of servings (in the chosen unit)
+  The ingredient_id and unit_id comes from the search_ingredients tool 
 
-CRITICAL — unit_id and quantity rules:
-- ALWAYS use the unit that matches what the source recipe specifies.
-  Examples: "2 cuillères à soupe" → use the "Cuillère à soupe" unit id from search results
-            "1 pincée" → use the "Pincée" unit id
-            "200g" → use the "Kilogramme" unit id with quantity 0.2
-- NEVER default to the natural unit (e.g. Kilogramme) when the recipe gives a spoon/pinch/piece count.
-- The unit_id MUST be taken from the ingredient's natural_unit.id or one of its alternative_units[].id 
-  returned by search_ingredients. Do not invent unit ids.
-- Double-check: if the source says "2 càs" for 4 servings, quantity_per_cover = 0.5 (càs), not 0.0005 (kg).
+tools: all tools used in the recipe
+  Each tool is a JSON object:
+    {"tool_id": "<id from search>"}
 
-Each tool is a JSON object:
-  {"tool_id": "<id from search>"}
-
-directions : ordered array of step descriptions as plain strings.`),
-			mcp.WithString("title", mcp.Required(), mcp.Description("Recipe title")),
-			mcp.WithString("recipe_family", mcp.Required(), mcp.Description("Recipe family"), mcp.Enum("Plat", "Dessert", "Apéro", "Boisson", "Entrée", "Autre")),
-			mcp.WithNumber("preparation_time_minutes", mcp.Required(), mcp.Description("Preparation time in minutes")),
-			mcp.WithNumber("cooking_time_minutes", mcp.Required(), mcp.Description("Cooking time in minutes")),
-			mcp.WithNumber("resting_time_minutes", mcp.Description("Resting time in minutes")),
-			mcp.WithNumber("servings", mcp.Required(), mcp.Description("Number of servings")),
+directions : ordered array of step descriptions as plain strings`),
 			mcp.WithString("constituents",
 				mcp.Required(),
 				mcp.Description(`JSON array of ingredients: [{"ingredient_id":"...","quantity_per_cover":0.2,"unit_id":"..."}]`),
 			),
-			mcp.WithString("tools",
-				mcp.Required(),
-				mcp.Description(`JSON array of tools: [{"tool_id":"..."}]`),
-			),
+			mcp.WithNumber("cooking_time_minutes", mcp.Required(), mcp.Description("Cooking time in minutes")),
+			mcp.WithNumber("description", mcp.Required(), mcp.Description("Short description about the recipe")),
 			mcp.WithString("directions",
 				mcp.Required(),
 				mcp.Description(`JSON array of step strings: ["Faire bouillir l'eau...", "Ajouter les pâtes..."]`),
 			),
+			mcp.WithString("image_url",
+				mcp.Description(`Path of the image previously uploaded to jow using the upload_recipe_image tool (e.g "uploadedrecipes/0pShp2tcyOcmtQ.jpg")`),
+			),
+			mcp.WithNumber("preparation_time_minutes", mcp.Required(), mcp.Description("Preparation time in minutes")),
+			mcp.WithString("recipe_family", mcp.Required(), mcp.Description("Type of recipe"), mcp.Enum("Plat", "Dessert", "Apéro", "Boisson", "Entrée", "Autre")),
+			mcp.WithNumber("resting_time_minutes", mcp.Description("Resting time in minutes")),
+			mcp.WithNumber("servings", mcp.Required(), mcp.Description("Number of servings. Set 0 if this recipe is for sharing and can't be cooked as individual servings")),
 			mcp.WithString("tip",
 				mcp.Description("Optional chef tip shown with the recipe"),
+			),
+			mcp.WithString("title", mcp.Required(), mcp.Description("Recipe title")),
+			mcp.WithString("tools",
+				mcp.Required(),
+				mcp.Description(`JSON array of tools: [{"tool_id":"..."}]`),
 			),
 			mcp.WithDestructiveHintAnnotation(true),
 			mcp.WithOpenWorldHintAnnotation(true),
@@ -218,19 +239,21 @@ type toolInput struct {
 func handleCreateRecipe(req mcp.CallToolRequest, client *jow.Client) (*mcp.CallToolResult, error) {
 	args := req.GetArguments()
 
-	title, _ := args["title"].(string)
-	recipeFamily, _ := args["recipe_family"].(string)
-	preparationTime := intArg(args, "preparation_time_minutes")
 	cookingTime := intArg(args, "cooking_time_minutes")
+	constituentsJSON, _ := args["constituents"].(string)
+	description, _ := args["description"].(string)
+	directionsJSON, _ := args["directions"].(string)
+	imageURL, _ := args["image_url"].(string)
+	preparationTime := intArg(args, "preparation_time_minutes")
+	recipeFamily, _ := args["recipe_family"].(string)
 	restingTime := optIntArg(args, "resting_time_minutes")
 	servings := intArg(args, "servings")
+	staticCoversCount := false
 	if servings == 0 {
-		servings = 2
+		staticCoversCount = true
 	}
 	tip, _ := args["tip"].(string)
-
-	constituentsJSON, _ := args["constituents"].(string)
-	directionsJSON, _ := args["directions"].(string)
+	title, _ := args["title"].(string)
 	toolsJSON, _ := args["tools"].(string)
 
 	// Parse and resolve constituents
@@ -284,13 +307,15 @@ func handleCreateRecipe(req mcp.CallToolRequest, client *jow.Client) (*mcp.CallT
 		},
 		Constituents:      mainConstituents,
 		CookingTime:       cookingTime,
+		Description:       description,
 		Directions:        directions,
+		ImageURL:          imageURL,
 		PlaceHolderURL:    "placeholders/plate.png",
 		PreparationTime:   preparationTime,
 		RecipeFamily:      resolveRecipeFamily(recipeFamily),
 		RestingTime:       restingTime,
 		RequiredTools:     tools,
-		StaticCoversCount: false,
+		StaticCoversCount: staticCoversCount,
 		Tip:               jow.Tip{Description: tip},
 		Title:             title,
 		UserConstituents:  []jow.Constituent{},
@@ -307,7 +332,7 @@ func handleCreateRecipe(req mcp.CallToolRequest, client *jow.Client) (*mcp.CallT
 		return mcp.NewToolResultError(fmt.Sprintf("get most recent recipe: %v", err)), nil
 	}
 
-	recipeURL := fmt.Sprintf("https://jow.fr/user-recipes/%v?coversCount=2", recipe.ID)
+	recipeURL := fmt.Sprintf("https://jow.fr/user-recipes/%v", recipe.ID)
 	return mcp.NewToolResultText(fmt.Sprintf("Recipe created successfully! ID: %v URL: %v", recipe.ID, recipeURL)), nil
 }
 

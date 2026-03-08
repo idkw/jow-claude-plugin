@@ -1,0 +1,10 @@
+{
+  "mcpServers": {
+    "jow-recipes": {
+      "command": "${CLAUDE_PLUGIN_ROOT}/build/jow-mcp-server",
+      "env": {
+        "JOW_TOKEN": "${JOW_TOKEN}"
+      }
+    }
+  }
+}

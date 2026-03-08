@@ -1,0 +1,14 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(go build:*)",
+      "Bash(go run:*)",
+      "Bash(go get:*)",
+      "Bash(go:*)",
+      "mcp__jow-recipes__search_ingredients",
+      "mcp__plugin_jow-recipes_jow-recipes__search_ingredients",
+      "mcp__plugin_jow-recipes_jow-recipes__get_recipe_tools",
+      "mcp__plugin_jow-recipes_jow-recipes__upload_recipe_image"
+    ]
+  }
+}

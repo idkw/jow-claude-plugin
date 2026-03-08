@@ -1,0 +1,23 @@
+{
+  "name": "jow-claude-marketplace",
+  "owner": {
+    "name": "idkw"
+  },
+  "metadata": {
+    "description": "Claude Code plugins for jow.fr recipe management"
+  },
+  "plugins": [
+    {
+      "name": "jow-claude-plugin",
+      "source": "./plugins/jow-claude-plugin",
+      "description": "Manage recipes on jow.fr — search ingredients, list kitchen tools, and create full recipes.",
+      "version": "1.0.0",
+      "author": {
+        "name": "idkw"
+      },
+      "repository": "https://github.com/idkw/jow-claude-plugin",
+      "license": "MIT",
+      "keywords": ["jow", "recipes", "cooking", "mcp"]
+    }
+  ]
+}

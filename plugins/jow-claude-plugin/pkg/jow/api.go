@@ -6,8 +6,10 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"mime"
 	"mime/multipart"
 	"net/http"
+	"net/textproto"
 	"net/url"
 	"os"
 	"path/filepath"
@@ -131,14 +133,23 @@ func (c *Client) UploadRecipeImage(imagePath string) (string, error) {
 
 	var buf bytes.Buffer
 	w := multipart.NewWriter(&buf)
-	fw, err := w.CreateFormFile("image", filepath.Base(imagePath))
+
+	mimeType := detectMimeType(f)
+	h := make(textproto.MIMEHeader)
+	h.Set("Content-Disposition", fmt.Sprintf(`form-data; name="image"; filename="%s"`, filepath.Base(imagePath)))
+	h.Set("Content-Type", mimeType)
+
+	part, err := w.CreatePart(h)
 	if err != nil {
-		return "", fmt.Errorf("create form file: %w", err)
+		return "", fmt.Errorf("create form part: %w", err)
 	}
-	if _, err := io.Copy(fw, f); err != nil {
+	if _, err = io.Copy(part, f); err != nil {
 		return "", fmt.Errorf("copy image data: %w", err)
 	}
-	w.Close()
+	err = w.Close()
+	if err != nil {
+		return "", fmt.Errorf("close form part: %w", err)
+	}
 
 	req, err := http.NewRequest("POST", baseURL+"/recipes/uploaded/image", &buf)
 	if err != nil {
@@ -173,6 +184,18 @@ func (c *Client) UploadRecipeImage(imagePath string) (string, error) {
 		return "", fmt.Errorf("parse upload response: %w", err)
 	}
 	return result.Data.ImageURL, nil
+}
+
+func detectMimeType(file *os.File) string {
+	mimeType := mime.TypeByExtension(filepath.Ext(file.Name()))
+	if mimeType != "" {
+		return mimeType
+	}
+
+	buf := make([]byte, 512)
+	n, _ := file.Read(buf)
+	file.Seek(0, io.SeekStart)
+	return http.DetectContentType(buf[:n])
 }
 
 // UpdateRecipe updates an existing uploaded recipe.

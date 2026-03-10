@@ -28,11 +28,13 @@ func main() {
 	registerTools(s, client)
 
 	if addr := os.Getenv("JOW_MCP_HTTP_ADDR"); addr != "" {
+		log.Printf("Started StreamableHTTP MCP sever listening on %s", addr)
 		httpServer := server.NewStreamableHTTPServer(s)
 		if err := httpServer.Start(addr); err != nil {
 			log.Fatalf("MCP server error: %v", err)
 		}
 	} else {
+		log.Printf("Started stdio MCP server")
 		if err := server.ServeStdio(s); err != nil {
 			log.Fatalf("MCP server error: %v", err)
 		}
@@ -207,7 +209,8 @@ directions : ordered array of step descriptions as plain strings`),
 			mcp.WithNumber("preparation_time_minutes", mcp.Required(), mcp.Description("Preparation time in minutes")),
 			mcp.WithString("recipe_family", mcp.Required(), mcp.Description("Type of recipe"), mcp.Enum("Plat", "Dessert", "Apéro", "Boisson", "Entrée", "Autre")),
 			mcp.WithNumber("resting_time_minutes", mcp.Description("Resting time in minutes")),
-			mcp.WithNumber("servings", mcp.Required(), mcp.Description("Number of servings. Set 0 if this recipe is for sharing and can't be cooked as individual servings")),
+			mcp.WithNumber("servings", mcp.Required(), mcp.Description("Number of servings.")),
+			mcp.WithBoolean("static_servings", mcp.Required(), mcp.Description("Set this to true if this recipe is for sharing and can't be cooked as individual servings.")),
 			mcp.WithString("tip",
 				mcp.Description("Optional chef tip shown with the recipe"),
 			),
@@ -248,10 +251,7 @@ func handleCreateRecipe(req mcp.CallToolRequest, client *jow.Client) (*mcp.CallT
 	recipeFamily, _ := args["recipe_family"].(string)
 	restingTime := optIntArg(args, "resting_time_minutes")
 	servings := intArg(args, "servings")
-	staticCoversCount := false
-	if servings == 0 {
-		staticCoversCount = true
-	}
+	staticServings := args["static_servings"].(bool)
 	tip, _ := args["tip"].(string)
 	title, _ := args["title"].(string)
 	toolsJSON, _ := args["tools"].(string)
@@ -315,7 +315,7 @@ func handleCreateRecipe(req mcp.CallToolRequest, client *jow.Client) (*mcp.CallT
 		RecipeFamily:      resolveRecipeFamily(recipeFamily),
 		RestingTime:       restingTime,
 		RequiredTools:     tools,
-		StaticCoversCount: staticCoversCount,
+		StaticCoversCount: staticServings,
 		Tip:               jow.Tip{Description: tip},
 		Title:             title,
 		UserConstituents:  []jow.Constituent{},

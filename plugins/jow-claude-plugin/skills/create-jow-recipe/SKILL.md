@@ -77,6 +77,10 @@ Extract the recipe steps exactly as structured in the source document. Each dire
 - Do NOT over-split steps; keep sentences that go together in the same direction.
 - Write directions in French if the source is French.
 
+### Quantities in directions — this is critical
+
+Whenever an ingredient is split across multiple steps (e.g. butter used both in the dough and in the cream, water used both in the dough and in the syrup), **always state the exact quantity used at each step**. Do not just say "le beurre" — say "les 25 g de beurre doux" or "les 190 g de matière grasse de cuisson". This is essential because Jow only shows the total quantity on the ingredient list, so the user has no way to know how to split it without explicit quantities in the steps.
+
 ## Step 6 — Determine recipe metadata
 
 From the document, determine:

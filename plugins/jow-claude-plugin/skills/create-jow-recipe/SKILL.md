@@ -27,6 +27,7 @@ After reading the document, ask:
 > "Avez-vous une photo de la recette à uploader sur Jow ? Si oui, donnez-moi le chemin complet vers le fichier image."
 
 If the user provides a path, keep it for Step 7. If not, continue without an image.
+If the user provides a HTTP link, download the file to a temporary file and note its full path for the next steps.
 
 ## Step 3 — Extract and resolve ingredients
 
@@ -58,9 +59,7 @@ The unit you pass to `create_recipe` must match what the source recipe says, not
 
 Rules:
 - `unit_id` MUST come from `natural_unit.id` or one of `alternative_units[].id` returned by `search_ingredients`. Never invent one.
-- `quantity_per_cover` depends on the recipe type (see Servings rules in Step 6):
-  - **Per-portion**: (total quantity) ÷ (number of servings) — e.g. "2 càs" for 4 servings → `0.5`, unit = Cuillère à soupe
-  - **Shared / servings = 0**: total quantity exactly as stated — e.g. "200 g" → `0.2`, unit = Kilogramme (no division)
+- `quantity_per_cover` is always computed as: (total quantity) ÷ (number of servings) — e.g. "2 càs" for 4 servings → `0.5`, unit = Cuillère à soupe
 
 If no good ingredient match is found, note it but don't block the workflow.
 
@@ -97,7 +96,7 @@ From the document, determine:
 
 Write a short, appetising description (1–3 sentences) that makes the reader want to cook the recipe. Extract it from the document if a good one is present; otherwise generate it from the recipe content.
 
-For **shared / whole-item** recipes (`servings = 0`), always include the expected yield at the start of the description:
+For **shared / whole-item** recipes (`static_servings = true`), always include the expected yield at the start of the description:
 
 > "24 cookies moelleux au chocolat. Un classique américain..."
 > "1 tarte tatin caramélisée. Un dessert généreux..."
@@ -111,13 +110,13 @@ First determine **what kind of recipe it is**:
 - **Per-portion** — each person gets their own individual serving (assiette, verre, bol, ramequin, …). The number of servings equals the number of people.
 - **Shared / whole item** — the recipe produces one indivisible thing to share (gâteau, tarte, fournée de cookies, plat à partager, …).
 
-Then set `servings` and compute `quantity_per_cover` accordingly:
+Then set `servings`, `static_servings`, and compute `quantity_per_cover` accordingly:
 
-| Situation | `servings` | `quantity_per_cover` |
-|---|---|---|
-| Per-portion, count stated in recipe | that number (e.g. `4`) | total quantity ÷ servings count |
-| Shared/whole-item recipe | `0` | total quantity as stated in the recipe (no division) |
-| Count genuinely cannot be determined | `0` | total quantity as stated in the recipe (no division) |
+| Situation | `servings` | `static_servings` | `quantity_per_cover` |
+|---|---|---|---|
+| Per-portion, count stated in recipe | that number (e.g. `4`) | `false` | total quantity ÷ servings count |
+| Shared/whole-item recipe | number of pieces/units the recipe yields (e.g. `24` cookies, `1` tarte) | `true` | total quantity ÷ servings count |
+| Count genuinely cannot be determined | `1` | `true` | total quantity as stated in the recipe |
 
 ## Step 7 — Present a summary and confirm
 

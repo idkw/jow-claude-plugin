@@ -226,9 +226,137 @@ directions : ordered array of step descriptions as plain strings`),
 			return handleCreateRecipe(req, client)
 		},
 	)
+
+	// ── update_recipe ────────────────────────────────────────────────────────
+	s.AddTool(
+		mcp.NewTool("update_recipe",
+			mcp.WithDescription(`Update an existing recipe on Jow. Same fields as create_recipe plus the recipe ID.
+
+All fields are replaced — pass the complete recipe data, not just the changed fields.`),
+			mcp.WithString("recipe_id",
+				mcp.Required(),
+				mcp.Description("ID of the recipe to update"),
+			),
+			mcp.WithString("constituents",
+				mcp.Required(),
+				mcp.Description(`JSON array of ingredients: [{"ingredient_id":"...","quantity_per_cover":0.2,"unit_id":"..."}]`),
+			),
+			mcp.WithNumber("cooking_time_minutes", mcp.Required(), mcp.Description("Cooking time in minutes")),
+			mcp.WithNumber("description", mcp.Required(), mcp.Description("Short description about the recipe")),
+			mcp.WithString("directions",
+				mcp.Required(),
+				mcp.Description(`JSON array of step strings: ["Faire bouillir l'eau...", "Ajouter les pâtes..."]`),
+			),
+			mcp.WithString("image_url",
+				mcp.Description(`Path of the image previously uploaded to jow using the upload_recipe_image tool (e.g "uploadedrecipes/0pShp2tcyOcmtQ.jpg")`),
+			),
+			mcp.WithNumber("preparation_time_minutes", mcp.Required(), mcp.Description("Preparation time in minutes")),
+			mcp.WithString("recipe_family", mcp.Required(), mcp.Description("Type of recipe"), mcp.Enum("Plat", "Dessert", "Apéro", "Boisson", "Entrée", "Autre")),
+			mcp.WithNumber("resting_time_minutes", mcp.Description("Resting time in minutes")),
+			mcp.WithNumber("servings", mcp.Required(), mcp.Description("Number of servings.")),
+			mcp.WithBoolean("static_servings", mcp.Required(), mcp.Description("Set this to true if this recipe is for sharing and can't be cooked as individual servings.")),
+			mcp.WithString("tip",
+				mcp.Description("Optional chef tip shown with the recipe"),
+			),
+			mcp.WithString("title", mcp.Required(), mcp.Description("Recipe title")),
+			mcp.WithString("tools",
+				mcp.Required(),
+				mcp.Description(`JSON array of tools: [{"tool_id":"..."}]`),
+			),
+			mcp.WithDestructiveHintAnnotation(true),
+			mcp.WithOpenWorldHintAnnotation(true),
+		),
+		func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+			return handleUpdateRecipe(req, client)
+		},
+	)
+
+	// ── get_collections ──────────────────────────────────────────────────────
+	s.AddTool(
+		mcp.NewTool("get_collections",
+			mcp.WithDescription(
+				"Get the user's Jow collections (favorites, custom lists, …). "+
+					"Use the returned IDs with add_recipe_to_collection.",
+			),
+			mcp.WithDestructiveHintAnnotation(false),
+			mcp.WithOpenWorldHintAnnotation(true),
+		),
+		func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+			collections, err := client.GetCollections()
+			if err != nil {
+				return mcp.NewToolResultError(fmt.Sprintf("get collections: %v", err)), nil
+			}
+
+			type collectionInfo struct {
+				ID          string `json:"id"`
+				Title       string `json:"title"`
+				Type        string `json:"type"`
+				RecipeCount int    `json:"recipe_count"`
+			}
+			out := make([]collectionInfo, 0, len(collections))
+			for _, c := range collections {
+				out = append(out, collectionInfo{
+					ID:          c.ID,
+					Title:       c.Title,
+					Type:        c.Type,
+					RecipeCount: c.RecipeCount,
+				})
+			}
+			data, _ := json.MarshalIndent(out, "", "  ")
+			return mcp.NewToolResultText(string(data)), nil
+		},
+	)
+
+	// ── add_recipe_to_collection ─────────────────────────────────────────────
+	s.AddTool(
+		mcp.NewTool("add_recipe_to_collection",
+			mcp.WithDescription(
+				"Add a Jow recipe to one or more user collections (e.g. favorites). "+
+					"Provide the recipe ID and the collection IDs to add it to. "+
+					"Returns the list of updated collections.",
+			),
+			mcp.WithString("recipe_id",
+				mcp.Required(),
+				mcp.Description("ID of the recipe to add to collections"),
+			),
+			mcp.WithString("collection_ids",
+				mcp.Required(),
+				mcp.Description(`JSON array of collection IDs: ["69b31ae693b871d07e5e201e"]`),
+			),
+			mcp.WithDestructiveHintAnnotation(false),
+			mcp.WithOpenWorldHintAnnotation(true),
+		),
+		func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+			args := req.GetArguments()
+			recipeID, _ := args["recipe_id"].(string)
+			collectionIDsJSON, _ := args["collection_ids"].(string)
+
+			var collectionIDs []string
+			if err := json.Unmarshal([]byte(collectionIDsJSON), &collectionIDs); err != nil {
+				return mcp.NewToolResultError(fmt.Sprintf("invalid collection_ids JSON: %v", err)), nil
+			}
+
+			updated, err := client.AddRecipeToCollection(recipeID, collectionIDs)
+			if err != nil {
+				return mcp.NewToolResultError(fmt.Sprintf("add to collection: %v", err)), nil
+			}
+
+			type collectionInfo struct {
+				ID    string `json:"id"`
+				Title string `json:"title"`
+				Type  string `json:"type"`
+			}
+			out := make([]collectionInfo, 0, len(updated))
+			for _, c := range updated {
+				out = append(out, collectionInfo{ID: c.ID, Title: c.Title, Type: c.Type})
+			}
+			data, _ := json.MarshalIndent(out, "", "  ")
+			return mcp.NewToolResultText(string(data)), nil
+		},
+	)
 }
 
-// ── create_recipe handler ────────────────────────────────────────────────────
+// ── recipe handlers ──────────────────────────────────────────────────────────
 
 type constituentInput struct {
 	IngredientID     string  `json:"ingredient_id"`
@@ -239,9 +367,8 @@ type toolInput struct {
 	ToolID string `json:"tool_id"`
 }
 
-func handleCreateRecipe(req mcp.CallToolRequest, client *jow.Client) (*mcp.CallToolResult, error) {
-	args := req.GetArguments()
-
+// buildRecipeFromArgs parses and resolves all recipe fields from MCP arguments.
+func buildRecipeFromArgs(args map[string]interface{}, client *jow.Client) (*jow.Recipe, error) {
 	cookingTime := intArg(args, "cooking_time_minutes")
 	constituentsJSON, _ := args["constituents"].(string)
 	description, _ := args["description"].(string)
@@ -251,19 +378,18 @@ func handleCreateRecipe(req mcp.CallToolRequest, client *jow.Client) (*mcp.CallT
 	recipeFamily, _ := args["recipe_family"].(string)
 	restingTime := optIntArg(args, "resting_time_minutes")
 	servings := intArg(args, "servings")
-	staticServings := args["static_servings"].(bool)
+	staticServings, _ := args["static_servings"].(bool)
 	tip, _ := args["tip"].(string)
 	title, _ := args["title"].(string)
 	toolsJSON, _ := args["tools"].(string)
 
-	// Parse and resolve constituents
 	var rawConstituents []constituentInput
 	if err := json.Unmarshal([]byte(constituentsJSON), &rawConstituents); err != nil {
-		return mcp.NewToolResultError(fmt.Sprintf("invalid constituents JSON: %v", err)), nil
+		return nil, fmt.Errorf("invalid constituents JSON: %v", err)
 	}
 	constituents, err := resolveConstituents(client, rawConstituents)
 	if err != nil {
-		return mcp.NewToolResultError(fmt.Sprintf("resolve constituents: %v", err)), nil
+		return nil, fmt.Errorf("resolve constituents: %v", err)
 	}
 
 	mainConstituents := make([]jow.Constituent, 0, len(rawConstituents))
@@ -276,10 +402,9 @@ func handleCreateRecipe(req mcp.CallToolRequest, client *jow.Client) (*mcp.CallT
 		}
 	}
 
-	// Parse directions
 	var steps []string
 	if err := json.Unmarshal([]byte(directionsJSON), &steps); err != nil {
-		return mcp.NewToolResultError(fmt.Sprintf("invalid directions JSON: %v", err)), nil
+		return nil, fmt.Errorf("invalid directions JSON: %v", err)
 	}
 	directions := make([]jow.Direction, 0, len(steps))
 	for _, step := range steps {
@@ -289,17 +414,16 @@ func handleCreateRecipe(req mcp.CallToolRequest, client *jow.Client) (*mcp.CallT
 		})
 	}
 
-	// Parse and resolve tools
 	var rawTools []toolInput
 	if err := json.Unmarshal([]byte(toolsJSON), &rawTools); err != nil {
-		return mcp.NewToolResultError(fmt.Sprintf("invalid tools JSON: %v", err)), nil
+		return nil, fmt.Errorf("invalid tools JSON: %v", err)
 	}
 	tools, err := resolveTools(client, rawTools)
 	if err != nil {
-		return mcp.NewToolResultError(fmt.Sprintf("resolve tools: %v", err)), nil
+		return nil, fmt.Errorf("resolve tools: %v", err)
 	}
 
-	recipeReq := jow.Recipe{
+	recipe := &jow.Recipe{
 		AdditionalConstituents: additionalConstituents,
 		BackgroundPattern: jow.BackgroundPattern{
 			Color:    "#ffc847",
@@ -321,19 +445,47 @@ func handleCreateRecipe(req mcp.CallToolRequest, client *jow.Client) (*mcp.CallT
 		UserConstituents:  []jow.Constituent{},
 		UserCoversCount:   servings,
 	}
+	return recipe, nil
+}
 
-	err = client.CreateRecipe(recipeReq)
+func handleCreateRecipe(req mcp.CallToolRequest, client *jow.Client) (*mcp.CallToolResult, error) {
+	recipe, err := buildRecipeFromArgs(req.GetArguments(), client)
 	if err != nil {
+		return mcp.NewToolResultError(err.Error()), nil
+	}
+
+	if err := client.CreateRecipe(*recipe); err != nil {
 		return mcp.NewToolResultError(fmt.Sprintf("create recipe: %v", err)), nil
 	}
 
-	recipe, err := client.GetMostRecentRecipeByTitle(recipeReq.Title)
+	created, err := client.GetMostRecentRecipeByTitle(recipe.Title)
 	if err != nil {
 		return mcp.NewToolResultError(fmt.Sprintf("get most recent recipe: %v", err)), nil
 	}
 
-	recipeURL := fmt.Sprintf("https://jow.fr/user-recipes/%v", recipe.ID)
-	return mcp.NewToolResultText(fmt.Sprintf("Recipe created successfully! ID: %v URL: %v", recipe.ID, recipeURL)), nil
+	recipeURL := fmt.Sprintf("https://jow.fr/user-recipes/%v", created.ID)
+	return mcp.NewToolResultText(fmt.Sprintf("Recipe created successfully! ID: %v URL: %v", created.ID, recipeURL)), nil
+}
+
+func handleUpdateRecipe(req mcp.CallToolRequest, client *jow.Client) (*mcp.CallToolResult, error) {
+	args := req.GetArguments()
+	recipeID, _ := args["recipe_id"].(string)
+	if recipeID == "" {
+		return mcp.NewToolResultError("recipe_id is required"), nil
+	}
+
+	recipe, err := buildRecipeFromArgs(args, client)
+	if err != nil {
+		return mcp.NewToolResultError(err.Error()), nil
+	}
+	recipe.ID = recipeID
+
+	if err := client.UpdateRecipe(recipeID, *recipe); err != nil {
+		return mcp.NewToolResultError(fmt.Sprintf("update recipe: %v", err)), nil
+	}
+
+	recipeURL := fmt.Sprintf("https://jow.fr/user-recipes/%v", recipeID)
+	return mcp.NewToolResultText(fmt.Sprintf("Recipe updated successfully! ID: %v URL: %v", recipeID, recipeURL)), nil
 }
 
 func resolveRecipeFamily(input string) string {

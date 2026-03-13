@@ -198,6 +198,58 @@ func detectMimeType(file *os.File) string {
 	return http.DetectContentType(buf[:n])
 }
 
+// GetCollections returns the user's collections.
+func (c *Client) GetCollections() ([]Collection, error) {
+	path := fmt.Sprintf("/profile/letscook?preferredLimit=100&projectionFields=collections&availabilityZoneId=%s", availabilityZone)
+
+	body, err := c.do("GET", path, nil)
+	if err != nil {
+		return nil, fmt.Errorf("get collections: %w", err)
+	}
+
+	type collectionsInner struct {
+		Collections []Collection `json:"collections"`
+	}
+	type collectionsData struct {
+		Collections collectionsInner `json:"collections"`
+	}
+	var result apiResponse[collectionsData]
+	if err := json.Unmarshal(body, &result); err != nil {
+		return nil, fmt.Errorf("parse collections response: %w", err)
+	}
+	return result.Data.Collections.Collections, nil
+}
+
+// AddRecipeToCollection adds a recipe to one or more collections.
+// Returns the list of collections that were updated.
+func (c *Client) AddRecipeToCollection(recipeID string, collectionIDs []string) ([]Collection, error) {
+	userID, err := c.userID()
+	if err != nil {
+		return nil, fmt.Errorf("get user ID from token: %w", err)
+	}
+
+	path := fmt.Sprintf("/users/%s/collections/populate", userID)
+	reqBody := map[string]interface{}{
+		"recipeId":       recipeID,
+		"source":         "user-generated",
+		"collectionsIds": collectionIDs,
+	}
+
+	body, err := c.do("POST", path, reqBody)
+	if err != nil {
+		return nil, fmt.Errorf("populate collection: %w", err)
+	}
+
+	type populateData struct {
+		UpdatedCollections []Collection `json:"updatedCollections"`
+	}
+	var result apiResponse[populateData]
+	if err := json.Unmarshal(body, &result); err != nil {
+		return nil, fmt.Errorf("parse populate response: %w", err)
+	}
+	return result.Data.UpdatedCollections, nil
+}
+
 // UpdateRecipe updates an existing uploaded recipe.
 func (c *Client) UpdateRecipe(id string, req Recipe) error {
 	_, err := c.do("PUT", "/recipes/uploaded/"+id, req)

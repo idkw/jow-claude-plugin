@@ -88,6 +88,16 @@ type Tip struct {
 	Description string `json:"description"`
 }
 
+// Collection represents a Jow user collection (favorites, custom lists, …)
+type Collection struct {
+	ID          string   `json:"id"`
+	Title       string   `json:"title"`
+	Type        string   `json:"type"`
+	IsPrivate   bool     `json:"isPrivate"`
+	RecipeCount int      `json:"recipeCount"`
+	Permissions []string `json:"permissions"`
+}
+
 // apiResponse wraps the standard Jow API envelope
 type apiResponse[T any] struct {
 	Meta interface{} `json:"meta"`

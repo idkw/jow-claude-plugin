@@ -2,11 +2,13 @@ package jow
 
 import (
 	"bytes"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
 	"os"
+	"strings"
 )
 
 const (
@@ -18,6 +20,28 @@ const (
 type Client struct {
 	token      string
 	httpClient *http.Client
+}
+
+// userID extracts the userId claim from the Bearer JWT token.
+func (c *Client) userID() (string, error) {
+	parts := strings.Split(c.token, ".")
+	if len(parts) != 3 {
+		return "", fmt.Errorf("invalid JWT format")
+	}
+	payload, err := base64.RawURLEncoding.DecodeString(parts[1])
+	if err != nil {
+		return "", fmt.Errorf("decode JWT payload: %w", err)
+	}
+	var claims struct {
+		UserID string `json:"userId"`
+	}
+	if err := json.Unmarshal(payload, &claims); err != nil {
+		return "", fmt.Errorf("parse JWT claims: %w", err)
+	}
+	if claims.UserID == "" {
+		return "", fmt.Errorf("userId not found in JWT")
+	}
+	return claims.UserID, nil
 }
 
 // NewClient returns a new Jow client authenticated with the given Bearer token.

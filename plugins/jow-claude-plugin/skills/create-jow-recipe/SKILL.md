@@ -180,5 +180,7 @@ After the recipe is created, automatically add it to the collection that best ma
 
 Matching is case-insensitive. If no collection title contains any of the keywords for the family, skip silently and do not add the recipe to any collection.
 
-3. If a match is found, call `add_recipe_to_collection` with the recipe ID and the matched collection's ID.
+3. If a match is found:
+   1. Call `favorite_recipe` with the recipe ID.
+   2. Call `add_recipe_to_collection` with the recipe ID and the matched collection's ID.
 4. Inform the user: "La recette a également été ajoutée à la collection *[nom de la collection]*." — or, if no match was found: "Aucune collection correspondante n'a été trouvée ; la recette n'a pas été classée automatiquement."

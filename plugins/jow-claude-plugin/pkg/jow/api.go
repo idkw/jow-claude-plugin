@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log"
 	"mime"
 	"mime/multipart"
 	"net/http"
@@ -43,7 +44,7 @@ func (c *Client) GetRecipes() ([]Recipe, error) {
 	query.Set("start", "0")
 	query.Set("limit", "10000")
 
-	body, err := c.do("GET", path+"&"+query.Encode(), nil)
+	body, err := c.do("GET", path+"?"+query.Encode(), nil)
 	if err != nil {
 		return nil, fmt.Errorf("get recipes: %w", err)
 	}
@@ -98,7 +99,17 @@ func (c *Client) GetIngredient(id string) (*Ingredient, error) {
 	if err := json.Unmarshal(body, &result); err != nil {
 		return nil, fmt.Errorf("parse ingredient response: %w", err)
 	}
-	return &result.Data, nil
+	resultIngredient := &result.Data
+
+	searchedIngredients, err := c.SearchIngredients(resultIngredient.Name, 1)
+	if err != nil || len(searchedIngredients) == 0 || searchedIngredients[0].ID != id {
+		log.Printf("Didn't find ingredient with id %s and name %s in search API to assess "+
+			"whether it is an additionalConstituent. Skipping the check.", id, resultIngredient.Name)
+	} else {
+		resultIngredient.IsAdditionalConstituent = searchedIngredients[0].IsAdditionalConstituent
+	}
+
+	return resultIngredient, nil
 }
 
 // GetRecipeTools fetches the list of available kitchen tools.
@@ -267,6 +278,24 @@ func (c *Client) AddRecipeToCollection(recipeID string, collectionIDs []string) 
 		return nil, fmt.Errorf("parse populate response: %w", err)
 	}
 	return result.Data.UpdatedCollections, nil
+}
+
+// FavoriteRecipe adds a recipe to the user's favorites collection.
+// Must be called before AddRecipeToCollection.
+func (c *Client) FavoriteRecipe(recipeID string) error {
+	userID, err := c.userID()
+	if err != nil {
+		return fmt.Errorf("get user ID from token: %w", err)
+	}
+	path := fmt.Sprintf("/users/%s/collections/favorites", userID)
+	_, err = c.do("POST", path, map[string]interface{}{
+		"recipeId": recipeID,
+		"source":   "user-generated",
+	})
+	if err != nil {
+		return fmt.Errorf("favorite recipe %s: %w", recipeID, err)
+	}
+	return nil
 }
 
 // UpdateRecipe updates an existing uploaded recipe.

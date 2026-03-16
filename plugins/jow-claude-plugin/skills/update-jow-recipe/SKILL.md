@@ -119,3 +119,4 @@ Une fois confirmé :
 2. Partage l'URL de la recette mise à jour avec l'utilisateur.
 3. Si le `recipe_family` a changé, propose d'ajouter la recette à la collection correspondante
    (même logique que le Step 9 de `create-jow-recipe`) en demandant d'abord confirmation.
+   Si confirmé : appelle d'abord `favorite_recipe`, puis `add_recipe_to_collection`.

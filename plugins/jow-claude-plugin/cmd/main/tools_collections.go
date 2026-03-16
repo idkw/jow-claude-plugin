@@ -12,7 +12,32 @@ import (
 
 func registerCollectionTools(s *server.MCPServer, client *jow.Client) {
 	registerGetCollectionsTool(s, client)
+	registerFavoriteRecipeTool(s, client)
 	registerAddRecipeToCollectionTool(s, client)
+}
+
+func registerFavoriteRecipeTool(s *server.MCPServer, client *jow.Client) {
+	s.AddTool(
+		mcp.NewTool("favorite_recipe",
+			mcp.WithDescription(
+				"Add a recipe to the user's Jow favorites. "+
+					"Must be called before add_recipe_to_collection.",
+			),
+			mcp.WithString("recipe_id",
+				mcp.Required(),
+				mcp.Description("ID of the recipe to favorite"),
+			),
+			mcp.WithDestructiveHintAnnotation(false),
+			mcp.WithOpenWorldHintAnnotation(true),
+		),
+		func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+			recipeID, _ := req.GetArguments()["recipe_id"].(string)
+			if err := client.FavoriteRecipe(recipeID); err != nil {
+				return mcp.NewToolResultError(fmt.Sprintf("favorite recipe: %v", err)), nil
+			}
+			return mcp.NewToolResultText("Recipe favorited successfully."), nil
+		},
+	)
 }
 
 func registerGetCollectionsTool(s *server.MCPServer, client *jow.Client) {

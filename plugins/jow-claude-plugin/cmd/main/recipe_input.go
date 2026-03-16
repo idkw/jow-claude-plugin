@@ -46,7 +46,7 @@ func buildRecipeFromArgs(args map[string]interface{}, client *jow.Client) (*jow.
 	mainConstituents := make([]jow.Constituent, 0, len(rawConstituents))
 	additionalConstituents := make([]jow.Constituent, 0, len(rawConstituents))
 	for _, c := range constituents {
-		if c.Ingredient.RecipeUploadConfig.IsAdditionalConstituent {
+		if c.Ingredient.IsAdditionalConstituent {
 			additionalConstituents = append(additionalConstituents, c)
 		} else {
 			mainConstituents = append(mainConstituents, c)

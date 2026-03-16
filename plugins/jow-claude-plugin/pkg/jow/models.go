@@ -22,18 +22,14 @@ type DisplayableUnit struct {
 
 // Ingredient represents a Jow ingredient.
 type Ingredient struct {
-	ID                 string             `json:"id"`
-	Name               string             `json:"name"`
-	ImageURL           string             `json:"imageUrl"`
-	IsBasicIngredient  bool               `json:"isBasicIngredient"`
-	RecipeUploadConfig RecipeUploadConfig `json:"recipeUploadConfig"`
-	NaturalUnit        Unit               `json:"naturalUnit"`
-	AlternativeUnits   []AlternativeUnit  `json:"alternativeUnits"`
-	DisplayableUnits   []DisplayableUnit  `json:"displayableUnits"`
-}
-
-type RecipeUploadConfig struct {
-	IsAdditionalConstituent bool `json:"isAdditionalConstituent"`
+	ID                      string            `json:"id"`
+	Name                    string            `json:"name"`
+	ImageURL                string            `json:"imageUrl"`
+	IsBasicIngredient       bool              `json:"isBasicIngredient"`
+	IsAdditionalConstituent bool              `json:"isAdditionalConstituent"`
+	NaturalUnit             Unit              `json:"naturalUnit"`
+	AlternativeUnits        []AlternativeUnit `json:"alternativeUnits"`
+	DisplayableUnits        []DisplayableUnit `json:"displayableUnits"`
 }
 
 // Constituent is an ingredient with its quantity in a recipe

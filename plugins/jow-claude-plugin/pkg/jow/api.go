@@ -39,8 +39,11 @@ func (c *Client) GetMostRecentRecipeByTitle(title string) (*Recipe, error) {
 // GetRecipes returns all user-created recipes
 func (c *Client) GetRecipes() ([]Recipe, error) {
 	path := fmt.Sprintf("/recipes/uploaded")
+	query := url.Values{}
+	query.Set("start", "0")
+	query.Set("limit", "10000")
 
-	body, err := c.do("GET", path, nil)
+	body, err := c.do("GET", path+"&"+query.Encode(), nil)
 	if err != nil {
 		return nil, fmt.Errorf("get recipes: %w", err)
 	}
@@ -196,6 +199,22 @@ func detectMimeType(file *os.File) string {
 	n, _ := file.Read(buf)
 	file.Seek(0, io.SeekStart)
 	return http.DetectContentType(buf[:n])
+}
+
+// GetRecipeByID fetches a single recipe by its ID.
+func (c *Client) GetRecipeByID(id string) (*Recipe, error) {
+	path := fmt.Sprintf("/recipe/profiled/%s?source=user-generated&withDetails=true", id)
+
+	body, err := c.do("GET", path, nil)
+	if err != nil {
+		return nil, fmt.Errorf("get recipe %s: %w", id, err)
+	}
+
+	var result apiResponse[Recipe]
+	if err := json.Unmarshal(body, &result); err != nil {
+		return nil, fmt.Errorf("parse recipe response: %w", err)
+	}
+	return &result.Data, nil
 }
 
 // GetCollections returns the user's collections.

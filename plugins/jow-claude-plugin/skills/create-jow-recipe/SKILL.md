@@ -159,4 +159,26 @@ Once the user confirms:
 
 1. If an image path was provided in Step 2, call `upload_recipe_image` with that path and note the returned `image_url`.
 2. Call `create_recipe` with all the resolved data, including `image_url` if available.
-3. Share the returned recipe URL with the user.
+3. Note the recipe ID returned by `create_recipe` — you'll need it in the next step.
+4. Share the returned recipe URL with the user.
+
+## Step 9 — Add the recipe to the matching collection
+
+After the recipe is created, automatically add it to the collection that best matches its `recipe_family`. Do this silently, without asking for confirmation.
+
+1. Call `get_collections` to get the user's collection list.
+2. Pick the collection whose `title` best matches the recipe family:
+
+| recipe_family | Preferred collection title keywords |
+|---|---|
+| Plat | "plat", "plats", "dîner", "repas" |
+| Dessert | "dessert", "desserts", "sucré" |
+| Apéro | "apéro", "apéritif", "entrée" |
+| Boisson | "boisson", "boissons", "cocktail" |
+| Entrée | "entrée", "entrées", "apéro", "apéritif" |
+| Autre | any remaining collection, or skip if nothing fits |
+
+Matching is case-insensitive. If no collection title contains any of the keywords for the family, skip silently and do not add the recipe to any collection.
+
+3. If a match is found, call `add_recipe_to_collection` with the recipe ID and the matched collection's ID.
+4. Inform the user: "La recette a également été ajoutée à la collection *[nom de la collection]*." — or, if no match was found: "Aucune collection correspondante n'a été trouvée ; la recette n'a pas été classée automatiquement."

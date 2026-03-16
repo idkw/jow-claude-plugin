@@ -1,3 +1,4 @@
 .idea
 plugins/jow-claude-plugin/build
+plugins/jow-claude-plugin/main
 .envrc
